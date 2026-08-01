@@ -1,0 +1,40 @@
+[package]
+name = "oklog_ulid"
+version = "0.1.0"
+edition = "2021"
+authors = ["ams0301"]
+license = "Apache-2.0"
+description = "Rust port of oklog/ulid (Go) — Universally Unique Lexicographically Sortable Identifier"
+repository = "https://github.com/ams0301/oklog-ulid-rs"
+documentation = "https://github.com/ams0301/oklog-ulid-rs"
+readme = "README.md"
+keywords = ["ulid", "id", "sortable", "identifier", "oklog"]
+categories = ["no-std", "data-structures", "encoding", "parsing"]
+exclude = ["/reference", "/benches/upstream-go", "/.github"]
+
+[lib]
+name = "oklog_ulid"
+path = "src/lib.rs"
+
+[[bin]]
+name = "oklog-ulid"
+path = "src/bin/ulid.rs"
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+
+[dev-dependencies]
+criterion = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[[bench]]
+name = "ulid"
+harness = false
+path = "benches/ulid.rs"
