@@ -34,13 +34,16 @@ mod base32;
 mod entropy;
 mod error;
 mod marshal;
+mod monotonic;
 mod ulid;
 
 pub use base32::{parse, DEC, ENCODING, INVALID};
 pub use entropy::{must_new, new, new_monotonic, with_time_only, Entropy, Monotonic, SliceReader, ZeroReader};
 pub use error::{Error, Result};
+#[cfg(feature = "std")]
+pub use monotonic::Locked;
+pub use monotonic::{MonotonicEntropy, Uint80};
 pub use ulid::{MaxTime, Ulid, ENCODED_SIZE, RAW_SIZE};
 
 // Subsequent commits add:
-//   mod monotonic;   // uint80 + MonotonicEntropy + Locked<T>
 //   #[cfg(feature = "std")] mod sys;  // Now/Timestamp/Time + DefaultEntropy
