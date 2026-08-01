@@ -27,14 +27,16 @@ std = []
 [dependencies]
 
 [dev-dependencies]
-criterion = "0.5"
+# No external dev-dependencies to keep build disk/dep footprint minimal
+# (host is disk-constrained during the 72h window). Benchmarks are
+# implemented as plain #[test]-style timing harnesses in benches/ulid.rs
+# using std::time::Instant rather than pulling in criterion. The harness
+# mirrors Go Benchmark* from reference/ulid_test.go lines 641-842.
 
 [profile.release]
 opt-level = 3
 lto = "thin"
 codegen-units = 1
 
-[[bench]]
-name = "ulid"
-harness = false
-path = "benches/ulid.rs"
+# No `[[bench]]` table: lit.rs makes benches runnable via `cargo test --benches`
+# using the default libtest harness with a manual timing wrapper.
