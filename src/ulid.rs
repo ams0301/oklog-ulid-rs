@@ -80,6 +80,17 @@ impl Ulid {
         self.0
     }
 
+    /// View the ULID as a mutable reference to its raw 16 big-endian bytes.
+    ///
+    /// Matches the Go pattern `id[6:]` where callers (notably the CLI in
+    /// `cmd/ulid/main.go` and `DefaultEntropy/Make`) write entropy bytes
+    /// directly into the tail of the array. The companion to
+    /// [`Ulid::as_bytes`] for the write path.
+    #[inline]
+    pub fn as_bytes_mut(&mut self) -> &mut [u8; RAW_SIZE] {
+        &mut self.0
+    }
+
     /// Return the Unix time in milliseconds encoded in the ULID.
     ///
     /// Mirrors Go `func (id ULID) Time() uint64`. Big-endian across bytes
