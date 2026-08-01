@@ -32,6 +32,7 @@ extern crate std;
 
 mod base32;
 mod error;
+mod marshal;
 mod ulid;
 
 pub use base32::{parse, DEC, ENCODING, INVALID};
@@ -39,7 +40,6 @@ pub use error::{Error, Result};
 pub use ulid::{MaxTime, Ulid, ENCODED_SIZE, RAW_SIZE};
 
 // Subsequent commits add:
-//   mod marshal;     // MarshalText/MarshalTextTo encoder (unrolled)
 //   mod entropy;     // `Entropy` trait mirroring io.Reader + io.ReadFull
 //   mod monotonic;   // uint80 + MonotonicEntropy + Locked<T>
 //   #[cfg(feature = "std")] mod sys;  // Now/Timestamp/Time + DefaultEntropy

@@ -45,9 +45,9 @@ impl MaxTime {
 /// safe to construct via [`Ulid::ZERO`] or by parsing a string. The
 /// `io.Reader`-driven constructors (`New`/`MustNew`/`Make`) are added in
 /// a later commit alongside the entropy trait.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Default, Debug)]
 #[repr(transparent)]
-pub struct Ulid([u8; RAW_SIZE]);
+pub struct Ulid(pub(crate) [u8; RAW_SIZE]);
 
 impl Ulid {
     /// The all-zero ULID (`00000000000000000000000000`).
