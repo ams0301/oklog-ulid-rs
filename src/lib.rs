@@ -45,5 +45,8 @@ pub use monotonic::Locked;
 pub use monotonic::{MonotonicEntropy, Uint80};
 pub use ulid::{MaxTime, Ulid, ENCODED_SIZE, RAW_SIZE};
 
-// Subsequent commits add:
-//   #[cfg(feature = "std")] mod sys;  // Now/Timestamp/Time + DefaultEntropy
+#[cfg(feature = "std")]
+mod sys;
+
+#[cfg(feature = "std")]
+pub use sys::{default_entropy, make, now, time_from_ms, timestamp, MathRng};
