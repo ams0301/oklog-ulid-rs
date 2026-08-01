@@ -186,7 +186,11 @@ impl<E: Entropy> MonotonicEntropy<E> {
         }
         let bit_len = (64 - (self.inc - 1).leading_zeros()) as usize; // bits.Len64(self.inc)
         let byte_len = bit_len.div_ceil(8);
-        let msbit_len = if bit_len.is_multiple_of(8) { 8 } else { bit_len % 8 };
+        let msbit_len = if bit_len.is_multiple_of(8) {
+            8
+        } else {
+            bit_len % 8
+        };
 
         let mut inc: u64 = 0;
         while inc == 0 || inc >= self.inc {
@@ -247,7 +251,9 @@ pub struct Locked<T: Monotonic> {
 #[cfg(feature = "std")]
 impl<T: Monotonic> Locked<T> {
     pub fn new(inner: T) -> Self {
-        Locked { inner: std::sync::Mutex::new(inner) }
+        Locked {
+            inner: std::sync::Mutex::new(inner),
+        }
     }
 
     /// Synchronized monotonic read. Mirrors Go

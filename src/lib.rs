@@ -38,7 +38,9 @@ mod monotonic;
 mod ulid;
 
 pub use base32::{parse, DEC, ENCODING, INVALID};
-pub use entropy::{must_new, new, new_monotonic, with_time_only, Entropy, Monotonic, SliceReader, ZeroReader};
+pub use entropy::{
+    must_new, new, new_monotonic, with_time_only, Entropy, Monotonic, SliceReader, ZeroReader,
+};
 pub use error::{Error, Result};
 #[cfg(feature = "std")]
 pub use monotonic::Locked;

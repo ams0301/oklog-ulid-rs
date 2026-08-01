@@ -24,9 +24,7 @@
 // to MathRng. Keeps the binary stdlib-only — no `getrandom` crate,
 // no `rand` crate, no `clap`.
 
-use oklog_ulid::{
-    now as now_ms, time_from_ms, Entropy, MathRng, Result, Ulid,
-};
+use oklog_ulid::{now as now_ms, time_from_ms, Entropy, MathRng, Result, Ulid};
 use std::io::Write;
 use std::process::ExitCode;
 
@@ -127,21 +125,13 @@ fn crypto_fill_platform(dst: &mut [u8]) -> std::io::Result<()> {
     use std::os::raw::{c_int, c_void};
     #[link(name = "advapi32")]
     extern "system" {
-        fn SystemFunction036(
-            randombuffer: *mut c_void,
-            randombufferlength: u32,
-        ) -> c_int;
+        fn SystemFunction036(randombuffer: *mut c_void, randombufferlength: u32) -> c_int;
     }
 
     let mut filled = 0;
     while filled < dst.len() {
         let remaining = (dst.len() - filled) as u32;
-        let ok = unsafe {
-            SystemFunction036(
-                dst[filled..].as_mut_ptr() as *mut c_void,
-                remaining,
-            )
-        };
+        let ok = unsafe { SystemFunction036(dst[filled..].as_mut_ptr() as *mut c_void, remaining) };
         // SystemFunction036 returns 1 on success, 0 on failure.
         if ok == 0 {
             return Err(std::io::Error::last_os_error());
@@ -165,7 +155,8 @@ fn crypto_fill_platform(dst: &mut [u8]) -> std::io::Result<()> {
     // DECISIONS.md as the supported fallback path.
     use oklog_ulid::Error;
     let mut rng = MathRng::new_from_time();
-    rng.read(dst).map_err(|e: Error| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+    rng.read(dst)
+        .map_err(|e: Error| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
 }
 
 /// XORStdin: write the generated ULID + newline (mirrors Go
@@ -311,4 +302,3 @@ fn run() -> ExitCode {
 fn main() -> ExitCode {
     run()
 }
-

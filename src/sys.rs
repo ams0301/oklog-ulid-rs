@@ -66,10 +66,16 @@ impl MathRng {
     /// New RNG seeded from current Unix-nanosecond time. Mirrors Go
     /// `rand.NewSource(time.Now().UnixNano())` (lines 134-137).
     pub fn new_from_time() -> Self {
-        let seed = now().wrapping_mul(1_000_000).wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let seed = now()
+            .wrapping_mul(1_000_000)
+            .wrapping_add(0x9E37_79B9_7F4A_7C15);
         MathRng {
             // xorshift64 needs non-zero state to start.
-            state: if seed == 0 { 0xDEAD_BEEF_DEAD_BEEF } else { seed },
+            state: if seed == 0 {
+                0xDEAD_BEEF_DEAD_BEEF
+            } else {
+                seed
+            },
         }
     }
 
@@ -78,7 +84,11 @@ impl MathRng {
         // Choose a fallback if seed happens to be zero; xorshift cannot
         // bootstrap from state=0. We preserve user intent when seed!=0.
         MathRng {
-            state: if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed },
+            state: if seed == 0 {
+                0x9E37_79B9_7F4A_7C15
+            } else {
+                seed
+            },
         }
     }
 
@@ -140,7 +150,9 @@ pub fn make() -> Ulid {
     id.set_time(ms).expect("ms now cannot exceed MaxTime");
     let raw = ulid_bytes_mut(&mut id);
     let mut buf6 = [0u8; crate::RAW_SIZE - 6];
-    entropy.monotonic_read(ms, &mut buf6).expect("MathRng never fails");
+    entropy
+        .monotonic_read(ms, &mut buf6)
+        .expect("MathRng never fails");
     raw[6..].copy_from_slice(&buf6);
     id
 }
@@ -168,7 +180,10 @@ mod tests {
         } else {
             recovered.duration_since(original).unwrap()
         };
-        assert!(diff < Duration::from_millis(1), "round-trip drift exceeds 1 ms: {diff:?}");
+        assert!(
+            diff < Duration::from_millis(1),
+            "round-trip drift exceeds 1 ms: {diff:?}"
+        );
     }
 
     /// Mirrors Go `TestTimestamp` (lines 347-361): sub-millisecond input is
@@ -214,7 +229,10 @@ mod tests {
         let mut prev = make();
         for _ in 0..1_000 {
             let next = make();
-            assert!(next.as_bytes() > prev.as_bytes(), "non-monotonic: {prev:?} >= {next:?}");
+            assert!(
+                next.as_bytes() > prev.as_bytes(),
+                "non-monotonic: {prev:?} >= {next:?}"
+            );
             prev = next;
         }
     }

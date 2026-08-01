@@ -10,7 +10,7 @@
 // crate::ENCODING); binary form is the raw 16-byte big-endian layout.
 
 use crate::base32::{parse, ENCODING};
-use crate::ulid::{RAW_SIZE, Ulid};
+use crate::ulid::{Ulid, RAW_SIZE};
 use crate::{Error, Result, ENCODED_SIZE};
 
 impl Ulid {
@@ -88,6 +88,33 @@ impl Ulid {
     /// Mirrors Go `func ParseStrict(ulid string) (ULID, error)` (lines 167-169).
     pub fn parse_strict(text: &str) -> Result<Ulid> {
         Self::parse_bytes(text.as_bytes(), true)
+    }
+
+    /// Panic-on-error variant of [`Ulid::parse`].
+    ///
+    /// Mirrors Go `func MustParse(ulid string) ULID` (lines 171-179). The
+    /// Go panic is recovered by `testing` so the recovered value equals
+    /// `ulid.ErrDataSize` for an empty input; here we panic with the
+    /// [`Error`] value so `std::panic::catch_unwind` yields the same
+    /// comparable error and the test-suite port stays faithful.
+    #[inline]
+    pub fn must_parse(text: &str) -> Ulid {
+        match Self::parse(text) {
+            Ok(id) => id,
+            Err(e) => panic!("{e}"),
+        }
+    }
+
+    /// Panic-on-error variant of [`Ulid::parse_strict`].
+    ///
+    /// Mirrors Go `func MustParseStrict(ulid string) ULID` (lines 181-189).
+    /// Same recovery semantics as [`Ulid::must_parse`].
+    #[inline]
+    pub fn must_parse_strict(text: &str) -> Ulid {
+        match Self::parse_strict(text) {
+            Ok(id) => id,
+            Err(e) => panic!("{e}"),
+        }
     }
 
     /// Shared parse helper used by [`Ulid::parse`] and [`Ulid::parse_strict`].
@@ -227,7 +254,10 @@ mod tests {
     #[test]
     fn text_order_matches_binary_order() {
         let a = Ulid::from_bytes([0x00; RAW_SIZE]);
-        let b = Ulid::from_bytes([0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        let b = Ulid::from_bytes([
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
+        ]);
         let c = Ulid::from_bytes([0xFF; RAW_SIZE]);
         // Three-wise: a < b < c both in raw and text form.
         assert!(a < b);
@@ -239,7 +269,10 @@ mod tests {
     #[test]
     fn dec_and_encoding_are_inverse() {
         for (idx, &sym) in ENCODING.iter().enumerate() {
-            assert_eq!(DEC[sym as usize] as usize, idx, "DEC[{sym}] should be {idx}");
+            assert_eq!(
+                DEC[sym as usize] as usize, idx,
+                "DEC[{sym}] should be {idx}"
+            );
         }
     }
 }

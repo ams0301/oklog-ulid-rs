@@ -91,6 +91,20 @@ impl Ulid {
         &mut self.0
     }
 
+    /// Lexicographic comparison — matches Go `func (id ULID) Compare(other ULID) int`
+    /// which delegates to `bytes.Compare(id[:], other[:])`. Because ULID
+    /// bytes are big-endian over the whole 128-bit payload, byte-wise
+    /// comparison equals numeric comparison, identical to the Go behaviour.
+    ///
+    /// The Rust idiom is `Ulid: Ord` (derived), giving `id.cmp(&other)`;
+    /// this method is the named Go-API counterpart returning an
+    /// [`Ordering`] that integrates with both idioms: `id.compare(other)
+    /// == Ordering::Less` works just as `id.cmp(&other)` does.
+    #[inline]
+    pub fn compare(&self, other: &Ulid) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+
     /// Return the Unix time in milliseconds encoded in the ULID.
     ///
     /// Mirrors Go `func (id ULID) Time() uint64`. Big-endian across bytes
@@ -193,6 +207,9 @@ mod tests {
         // Time bytes:
         assert_eq!(id.as_bytes()[..6], [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB]);
         // Entropy untouched:
-        assert_eq!(&id.as_bytes()[6..], &[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22, 0x33, 0x44]);
+        assert_eq!(
+            &id.as_bytes()[6..],
+            &[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22, 0x33, 0x44]
+        );
     }
 }

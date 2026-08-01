@@ -22,8 +22,8 @@
 // `std::io::Error` directly so that the error type stays `Copy + Eq`
 // (see error.rs for the rationale matching the Go sentinel test idiom).
 
-use crate::ulid::RAW_SIZE;
 use crate::ulid::Ulid;
+use crate::ulid::RAW_SIZE;
 use crate::{Error, Result};
 
 /// Read-only entropy source. Mirrors Go `io.Reader`, restricted to the
@@ -232,16 +232,26 @@ mod tests {
     fn new_with_and_without_entropy() {
         // 1: time-only. Expect entropy to stay 0.
         let id = new::<ZeroReader>(100_000, None).unwrap();
-        let want = Ulid::from_bytes([0x00, 0x00, 0x00, 0x01, 0x86, 0xA0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(id, want, "time-only ULID wrong:\n   got {id:?}\n  want {want:?}");
+        let want = Ulid::from_bytes([
+            0x00, 0x00, 0x00, 0x01, 0x86, 0xA0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]);
+        assert_eq!(
+            id, want,
+            "time-only ULID wrong:\n   got {id:?}\n  want {want:?}"
+        );
 
         // 2: time + 16-byte 0xFF entropy. Only bytes 6..=15 should change.
         let entropy: [u8; 16] = [0xFF; 16];
         let mut reader = SliceReader::new(&entropy);
         let id = new(100_000, Some(&mut reader)).unwrap();
-        let want =
-            Ulid::from_bytes([0x00, 0x00, 0x00, 0x01, 0x86, 0xA0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
-        assert_eq!(id, want, "entropy bytes wrong:\n   got {id:?}\n  want {want:?}");
+        let want = Ulid::from_bytes([
+            0x00, 0x00, 0x00, 0x01, 0x86, 0xA0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF,
+        ]);
+        assert_eq!(
+            id, want,
+            "entropy bytes wrong:\n   got {id:?}\n  want {want:?}"
+        );
     }
 
     /// `must_new` panics on error. Mirrors Go TestMustNew "Panic" subtest
