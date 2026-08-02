@@ -42,9 +42,10 @@ pub use entropy::{
     must_new, new, new_monotonic, with_time_only, Entropy, Monotonic, SliceReader, ZeroReader,
 };
 pub use error::{Error, Result};
+pub use marshal::ScanInput;
 #[cfg(feature = "std")]
 pub use monotonic::Locked;
-pub use monotonic::{MonotonicEntropy, Uint80};
+pub use monotonic::{monotonic, MonotonicEntropy, Uint80};
 pub use ulid::{MaxTime, Ulid, ENCODED_SIZE, RAW_SIZE};
 
 #[cfg(feature = "std")]

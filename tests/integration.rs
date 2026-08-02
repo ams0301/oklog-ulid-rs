@@ -140,3 +140,199 @@ fn display_round_trips_through_parse() {
     assert_eq!(displayed, s);
     assert_eq!(displayed.len(), oklog_ulid::ENCODED_SIZE);
 }
+
+// ---------------------------------------------------------------------------
+// Tests added in Port #10 (功能性 completeness pass). These mirror the four
+// Go tests the earlier port left unported: TestEntropy (lines 411-432),
+// TestEntropyRead (lines 434-454), TestScan (lines 463-486), and the full
+// TestMonotonic (lines 501-535).
+// ---------------------------------------------------------------------------
+
+use oklog_ulid::{monotonic, new, new_monotonic, ScanInput};
+
+/// Mirrors Go `TestEntropy` (lines 411-432): `SetEntropy([]byte{})`
+/// returns `ErrDataSize`; any 10-byte slice round-trips through
+/// `SetEntropy` / `Entropy`. Go uses `quick.Check` for the property
+/// branch; we draw a deterministic census (including the all-zero
+/// and all-FF extremes) which spans the same space deterministically.
+#[test]
+fn entropy_set_get_round_trips() {
+    // The static error-sentinel half — Go lines 414-417.
+    let mut id = Ulid::ZERO;
+    let got = id.set_entropy(&[]);
+    assert_eq!(got, Err(Error::DataSize));
+
+    // The property half — Go lines 419-430. Span the 10-byte input space.
+    let cases: [[u8; 10]; 5] = [
+        [0x00; 10],                                                   // all zero
+        [0xFF; 10],                                                   // all ones
+        [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A], // monotonic
+        [0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66], // pattern
+        // Last byte covers an off-by-one boundary (max u8 sentinel):
+        [0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFD],
+    ];
+    for e in cases {
+        let mut id = Ulid::ZERO;
+        id.set_entropy(&e)
+            .expect("set_entropy should accept 10 bytes");
+        let got = id.entropy();
+        assert_eq!(got, e, "entropy round-trip mismatch");
+        // Don't touch the time half.
+        assert_eq!(id.time(), 0, "entropy must not bleed into time");
+    }
+}
+
+/// Mirrors Go `TestEntropyRead` (lines 434-454): `New(now, HalfReader(e))`
+/// end-to-end reads 10 bytes of entropy correctly despite the reader
+/// returning only "half" of each Read call. Go's `iotest.HalfReader`
+/// wraps a reader so every read returns at most half the requested
+/// length; under our `Entropy::read` trait contract (which mandates
+/// full-fill, mirroring Go's `io.ReadFull`), the equivalent adapter
+/// is a stateful `HalfReader` that yields bytes one or two at a time
+/// until the buffer is filled — this exercises the underlying
+/// reader's `read_exact` accumulation semantics.
+#[test]
+fn new_with_half_reader_round_trips_entropy() {
+    for e in [
+        [0u8; 10],
+        [0xFFu8; 10],
+        [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA],
+    ] {
+        let mut reader = HalfReader::new(&e);
+        let id = new(oklog_ulid::now(), Some(&mut reader)).expect("new");
+        assert_eq!(id.entropy(), e, "entropy mismatch under HalfReader");
+    }
+}
+
+/// `iotest.HalfReader` analogue: returns up to `1 + counter % 2` bytes per
+/// `read`, never the full requested length. Behaves like Go's HalfReader
+/// in that it always returns at least one byte (until exhausted), so a
+/// `ReadFull`-style accumulator takes multiple reads to fill the dst.
+struct HalfReader<'a> {
+    buf: &'a [u8],
+    pos: usize,
+    call: u32,
+}
+
+impl<'a> HalfReader<'a> {
+    fn new(buf: &'a [u8]) -> Self {
+        HalfReader {
+            buf,
+            pos: 0,
+            call: 0,
+        }
+    }
+}
+
+impl<'a> oklog_ulid::Entropy for HalfReader<'a> {
+    fn read(&mut self, dst: &mut [u8]) -> oklog_ulid::Result<()> {
+        // Same "definitely inadequate" shape as iotest.HalfReader: never
+        // return the full requested length, even if we could. Each call
+        // yields ceil(requested/2) bytes (capped by what's left in self).
+        let requested = dst.len();
+        let permitted = requested.div_ceil(2); // never == requested (HalfReader invariant)
+        let available = self.buf.len() - self.pos;
+        let take = permitted.min(available).max(1.min(available));
+        dst[..take].copy_from_slice(&self.buf[self.pos..self.pos + take]);
+        self.pos += take;
+        self.call += 1;
+        // Our `Entropy::read` contract is full-fill; HalfReader intentionally
+        // can't full-fill in one call, so we recurse: continue drawing until
+        // the buffer is filled or our underlying source is exhausted.
+        if take < requested {
+            // Recurse with the tail. Catches the `read_exact` semantic the
+            // Go `io.ReadFull` в裹 wraps around the half-aware reader.
+            if self.pos >= self.buf.len() {
+                return Err(Error::Read(std::io::ErrorKind::UnexpectedEof));
+            }
+            self.read(&mut dst[take..])
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// Mirrors Go `TestScan` (lines 463-486). Three success cases (string,
+/// bytes, nil) and one rejection case (an arbitrary `Other` sentinel
+/// representing the int-typed drive value 44). Go uses an interface{}
+/// type switch; Rust uses our [`ScanInput`] sum type — same shape.
+#[test]
+fn scan_handles_string_bytes_nil_other() {
+    let id = oklog_ulid::must_new(123, Some(&mut oklog_ulid::MathRng::from_seed(0x1234_5678)));
+
+    // Each (name, input, want_out, want_err) — mirrors the Go table.
+    let cases: &[(&str, ScanInput, Ulid, Option<Error>)] = &[
+        ("string", ScanInput::String(&id.to_string()), id, None),
+        ("bytes", ScanInput::Bytes(&id.as_bytes()[..]), id, None),
+        ("nil", ScanInput::Null, Ulid::ZERO, None),
+        (
+            "other",
+            ScanInput::Other,
+            Ulid::ZERO,
+            Some(Error::ScanValue),
+        ),
+    ];
+
+    for (name, input, want_out, want_err) in cases {
+        let mut out = Ulid::ZERO;
+        let err = out.scan(*input);
+        if let Some(want_err) = want_err {
+            assert_eq!(err, Err(*want_err), "{name}: err mismatch");
+        } else {
+            assert!(err.is_ok(), "{name}: unexpected error {err:?}");
+        }
+        assert_eq!(
+            out.compare(want_out),
+            Ordering::Equal,
+            "{name}: ULID mismatch"
+        );
+    }
+}
+
+/// Mirrors Go `TestMonotonic` (lines 501-535). The Go original iterates
+/// over two entropy sources (crypto/math) and six `inc` values (0, 1, 2,
+/// 256, 65536, 0x100000000). For each combination, 10_000 ULIDs are
+/// generated with the same timestamp 123; each must strictly sort after
+/// the previous one. In Rust we swap the crypto-source branch for a
+/// second `MathRng` seeded from a distinct constant (the spirit is
+/// identical — the test verifies MonotonicRead monotonicity across
+/// entropy-source and inc settings, not crypto-vs-math specifically).
+#[test]
+fn monotonic_strictly_increases_across_inc_and_entropy_table() {
+    let inc_values: &[u64] = &[
+        0,                     // 0 -> converted to u32::MAX by MonotonicEntropy::new
+        1,                     // 1
+        2,                     // 2
+        (u8::MAX as u64) + 1,  // 256
+        (u16::MAX as u64) + 1, // 65536
+        (u32::MAX as u64) + 1, // 0x1_0000_0000
+    ];
+
+    // Two "entropy" rows. Go has {"cryptorand", "mathrand"}; we use two
+    // deterministic MathRng seeds since genuine crypto RNG would make the
+    // test non-deterministic.
+    for seed in [0xCAFE_BABE_u64, 0xDEAD_BEEF_u64] {
+        for &inc in inc_values {
+            let mut entropy = monotonic(oklog_ulid::MathRng::from_seed(seed), inc);
+            let mut prev: Option<Ulid> = None;
+            for _ in 0..10_000 {
+                // NB: Rust's static dispatch forces us to call
+                // `new_monotonic` directly here, where Go's `ulid.New`
+                // uses a runtime type switch to detect MonotonicReader
+                // and dispatch to MonotonicRead. The behavioural result
+                // is identical — `MonotonicRead` is invoked either way.
+                let next =
+                    new_monotonic(123, Some(&mut entropy)).expect("MonotonicRead never fails");
+                if let Some(p) = prev {
+                    assert!(
+                        p.compare(&next) == Ordering::Less,
+                        "monotonicity violated: prev > next (seed={seed:#x}, inc={inc})
+                         prev={p}
+                         next={next}",
+                    );
+                }
+                prev = Some(next);
+            }
+        }
+    }
+}

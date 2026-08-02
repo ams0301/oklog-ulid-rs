@@ -155,6 +155,43 @@ impl Ulid {
         self.0[5] = ms as u8;
         self
     }
+
+    /// Return the 10-byte entropy tail. Mirrors Go `func (id ULID) Entropy() []byte`.
+    ///
+    /// The Go original returns a slice into the underlying array; we return
+    /// an owned `[u8; 10]` to mirror the `bytes()` decision (by-value keeps
+    /// the type `Copy` and the slice-mutation semantics that `TestULID_Bytes`
+    /// pins down are still preserved because `set_entropy` is the only
+    /// write path). For a borrowed view use `id.as_bytes()[6..].try_into().unwrap()`.
+    #[inline]
+    pub const fn entropy(&self) -> [u8; 10] {
+        let mut out = [0u8; 10];
+        out[0] = self.0[6];
+        out[1] = self.0[7];
+        out[2] = self.0[8];
+        out[3] = self.0[9];
+        out[4] = self.0[10];
+        out[5] = self.0[11];
+        out[6] = self.0[12];
+        out[7] = self.0[13];
+        out[8] = self.0[14];
+        out[9] = self.0[15];
+        out
+    }
+
+    /// Set the 10-byte entropy tail. Mirrors Go `func (id *ULID) SetEntropy(e []byte) error`.
+    ///
+    /// Returns [`Error::DataSize`] when `entropy.len() != 10`, the same
+    /// sentinel as the Go original. Reading back via [`Ulid::entropy`]
+    /// round-trips for any 10-byte input.
+    #[inline]
+    pub fn set_entropy(&mut self, entropy: &[u8]) -> Result<()> {
+        if entropy.len() != 10 {
+            return Err(Error::DataSize);
+        }
+        self.0[6..16].copy_from_slice(entropy);
+        Ok(())
+    }
 }
 
 #[cfg(test)]

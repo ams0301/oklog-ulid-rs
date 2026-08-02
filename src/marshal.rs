@@ -13,6 +13,29 @@ use crate::base32::{parse, ENCODING};
 use crate::ulid::{Ulid, RAW_SIZE};
 use crate::{Error, Result, ENCODED_SIZE};
 
+/// A value passed to [`Ulid::scan`]. Mirrors the dynamic type-switch in Go's
+/// `func (id *ULID) Scan(src interface{}) error` (lines 279-291).
+///
+/// Rust has no `interface{}`, so this tiny sum-type enumerates exactly the
+/// four cases the Go original recognises: `String`, `Bytes`, `Null`, and
+/// `Other` (everything that *isn't* one of those three).
+///
+/// SQL-driver adapters can map their row-value types to this enum with a
+/// single match arm (e.g. `rusqlite::types::ValueRef` -> `ScanInput`).
+/// The default `lib` carries no SQL driver dependency; downstream
+/// `sqlx`/`diesel`/`rusqlite` adapters live with the consumer.
+#[derive(Debug, Clone, Copy)]
+pub enum ScanInput<'a> {
+    /// Go: `case string`. Carries the canonical 26-char text form.
+    String(&'a str),
+    /// Go: `case []byte`. Carries the raw 16-byte binary form.
+    Bytes(&'a [u8]),
+    /// Go: `case nil`. Signals SQL NULL; the receiver becomes `Ulid::ZERO`.
+    Null,
+    /// Go: `default`. Any other source type. Returns [`Error::ScanValue`].
+    Other,
+}
+
 impl Ulid {
     /// Encode the ULID into 26 characters of Crockford base-32 text in `dst`.
     ///
@@ -115,6 +138,72 @@ impl Ulid {
             Ok(id) => id,
             Err(e) => panic!("{e}"),
         }
+    }
+
+    /// Parse a ULID from raw text bytes (lax). Mirrors Go
+    /// `func (id *ULID) UnmarshalText(v []byte) error` (lines 220-224).
+    ///
+    /// This is the byte-shaped entry point — `Ulid::parse` accepts `&str`,
+    /// this accepts `&[u8]` so it integrates cleanly with serde-like
+    /// trait plumbing without a UTF-8 round-trip.
+    #[inline]
+    pub fn unmarshal_text(text: &[u8]) -> Result<Ulid> {
+        Self::parse_bytes(text, false)
+    }
+
+    /// Strict variant of [`Ulid::unmarshal_text`]. Mirrors
+    /// `func (id *ULID) UnmarshalText(v []byte) error` semantics combined
+    /// with the strict-decode path used by `ParseStrict`.
+    #[inline]
+    pub fn unmarshal_text_strict(text: &[u8]) -> Result<Ulid> {
+        Self::parse_bytes(text, true)
+    }
+
+    /// SQL-style scanner. Mirrors Go `func (id *ULID) Scan(src interface{}) error`
+    /// (lines 279-291) — accepts string, byte-slice, or nil; rejects
+    /// everything else with [`Error::ScanValue`].
+    ///
+    /// The Go signature takes `interface{}` and uses a type switch. Rust has
+    /// no dynamic `interface{}`; we offer [`ScanInput`] — a tiny sum type
+    /// covering exactly the cases the Go original recognises (`String`,
+    /// `Bytes`, `Null`, `Other`). This keeps the port SQL-driver-agnostic:
+    /// `sqlx`/`diesel`/`rusqlite` adapters can map their respective row-value
+    /// types into `ScanInput` with one match arm each. See `DECISIONS.md` for
+    /// the deferral rationale (no driver pulled in by default).
+    #[inline]
+    pub fn scan(&mut self, src: ScanInput<'_>) -> Result<()> {
+        match src {
+            ScanInput::Null => {
+                // Mirrors Go `case nil: *id = ULID{}`.
+                *self = Ulid::ZERO;
+                Ok(())
+            }
+            ScanInput::String(s) => {
+                // Mirrors Go `case string: return id.UnmarshalText([]byte(s))`.
+                let parsed = Self::parse_bytes(s.as_bytes(), false)?;
+                *self = parsed;
+                Ok(())
+            }
+            ScanInput::Bytes(b) => {
+                // Mirrors Go `case []byte: _, err := id.UnmarshalBinary(src)`.
+                // `UnmarshalBinary` requires exactly 16 bytes; other lengths
+                // return ErrDataSize, matching the Go behaviour precisely.
+                let parsed = Self::unmarshal_binary(b)?;
+                *self = parsed;
+                Ok(())
+            }
+            ScanInput::Other => Err(Error::ScanValue),
+        }
+    }
+
+    /// SQL value producer. Mirrors Go `func (id ULID) Value() (driver.Value, error)`
+    /// (lines 293-295) — exposes the canonical 26-char text form for any
+    /// SQL driver. We return an owned `String` so the caller is free to
+    /// hand it to whatever adapter they use.
+    #[inline]
+    pub fn value(&self) -> Result<String> {
+        // Mirrors `return string(id[:]), nil`. Equivalent to Display.
+        Ok(self.to_string())
     }
 
     /// Shared parse helper used by [`Ulid::parse`] and [`Ulid::parse_strict`].

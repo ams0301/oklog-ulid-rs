@@ -129,7 +129,23 @@ impl<E: Entropy> MonotonicEntropy<E> {
             rand_buf: [0u8; 8],
         }
     }
+}
 
+/// Free-function constructor — mirrors the call shape of Go
+/// `ulid.Monotonic(entropy, inc)` exactly, so a Go-to-Rust port can
+/// translate `ulid.Monotonic(rng, 0)` line-for-line as
+/// `oklog_ulid::monotonic(rng, 0)`.
+///
+/// Note: unlike the Go pointer-return, this returns an owned
+/// `MonotonicEntropy<E>` (no heap allocation). Its lifetime is owned
+/// by the caller, exactly as the Go `*MonotonicEntropy` ends up being
+/// stored by the caller anyway.
+#[inline]
+pub fn monotonic<E: Entropy>(entropy: E, inc: u64) -> MonotonicEntropy<E> {
+    MonotonicEntropy::new(entropy, inc)
+}
+
+impl<E: Entropy> MonotonicEntropy<E> {
     /// Implements the same body as Go `func (m *MonotonicEntropy)
     /// MonotonicRead(ms uint64, entropy []byte) (err error)` (lines 596-605):
     ///
