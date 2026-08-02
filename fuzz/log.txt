@@ -1,0 +1,9 @@
+
+=== oklog-ulid-rs differential fuzz summary ===
+budget_secs           : 60
+iterations            : 540310000
+divergences           : 0
+elapsed_secs          : 60.001
+iter_per_sec          : 9005000
+invariants            : INV-1 INV-3 INV-5
+verdict               : PASS — zero divergences

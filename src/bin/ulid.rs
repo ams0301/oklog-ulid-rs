@@ -131,6 +131,14 @@ fn crypto_fill_platform(dst: &mut [u8]) -> std::io::Result<()> {
     let mut filled = 0;
     while filled < dst.len() {
         let remaining = (dst.len() - filled) as u32;
+        // SAFETY: SystemFunction036 (RtlGenRandom) takes a destination
+        // pointer of arbitrary alignment and a byte count. We pass a
+        // sub-slice of `dst` whose pointer is in-bounds for `remaining`
+        // bytes. The function does not require alignment, does not read
+        // from the buffer, and writes exactly `remaining` bytes on
+        // success (return value 1). The `filled < dst.len()` loop guard
+        // ensures `dst[filled..]` always has at least `remaining` bytes
+        // available, so the raw-pointer alias is sound.
         let ok = unsafe { SystemFunction036(dst[filled..].as_mut_ptr() as *mut c_void, remaining) };
         // SystemFunction036 returns 1 on success, 0 on failure.
         if ok == 0 {

@@ -20,6 +20,21 @@ path = "src/lib.rs"
 name = "oklog-ulid"
 path = "src/bin/ulid.rs"
 
+[[bin]]
+name = "diff_fuzz"
+path = "fuzz/harness.rs"
+
+[[bin]]
+name = "ulid_bench"
+path = "bench/ulid_bench.rs"
+
+# Integration tests live under tests/port/ per the Port-Mortem advisory
+# layout. Cargo only auto-discovers tests/*.rs, so we declare the path
+# explicitly here so `cargo test` picks it up.
+[[test]]
+name = "integration"
+path = "tests/port/integration.rs"
+
 [features]
 default = ["std"]
 std = []
