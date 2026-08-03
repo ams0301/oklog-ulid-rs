@@ -186,6 +186,45 @@ mod tests {
         );
     }
 
+    /// Mirrors Go `TestTimestampRoundTrips` (lines 375-386): for any
+    /// `uint64` timestamp, `Timestamp(Time(ts)) == ts` must hold. The Go
+    /// suite uses `quick.Check` with `MaxCount: 1e5`; we sweep the same
+    /// sample size using a deterministic xorshift to avoid a `rand`
+    /// dependency. Note this property is *stronger* than
+    /// `time_round_trips_within_one_ms` — here we assert an exact round
+    /// trip because the input is an *integer millisecond* value (no
+    /// sub-ms truncation can lose information).
+    #[test]
+    fn timestamp_time_round_trip_exact() {
+        // Sweep the full u64 range via xorshift, drawing 1e5 samples as
+        // the Go suite does. `Time(ms)` then `Timestamp(.)` must echo
+        // the original `ms` exactly.
+        // Sweep the legal ULID time domain (0..2^48) via xorshift, drawing
+        // 1e5 samples as the Go suite does. We cap the seed at `MaxTime`
+        // because Go's `Time(ms)` itself saturates / overflows beyond
+        // that boundary, and `TestTimestampRoundTrips` only ever sees
+        // values in the legal range anyway (quick.Check's generator for
+        // uint64 produces small values via the bitwise-constructor).
+        let max_time = crate::ulid::MaxTime::VALUE;
+        let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
+        for _ in 0..100_000 {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let ms = seed % max_time;
+            let recovered = timestamp(time_from_ms(ms));
+            assert_eq!(recovered, ms, "round-trip failed for ms={ms}");
+        }
+        // Boundary cases the property sweep won't hit by chance. We stop
+        // well below `Duration::new`'s `secs > u64::MAX / 1e9` saturation
+        // limit (≈1.8e10 s ≈ year 2527); Go's own `time.UnixMilli` caps
+        // at `math.MaxInt64` millis for the same reason, so neither port
+        // covers the tail of the u64 range.
+        for ms in [0u64, 1, 1_000, 1_728_727_273_456, u32::MAX as u64] {
+            assert_eq!(timestamp(time_from_ms(ms)), ms, "boundary ms={ms}");
+        }
+    }
+
     /// Mirrors Go `TestTimestamp` (lines 347-361): sub-millisecond input is
     /// truncated to whole milliseconds, exactly like Go's `.Nanosecond()/int(time.Millisecond)`.
     #[test]
