@@ -40,24 +40,71 @@ fn measure<F: FnMut()>(iters: usize, mut f: F) -> Vec<u64> {
     v
 }
 
-/// Windowed throughput measurement: run `f` in a tight loop of `iters`,
-/// elapsed once for the whole loop, returning throughput (ops/sec) and a
-/// single throughput number. This avoids the per-iteration `Instant::now()`
-/// overhead that the latency-sampling harness above introduces (which on
-/// Windows makes the per-call latency look like 0ns when the operation is
-/// sub-100ns). The windowed number is the more honest throughput metric and
-/// is what gets reported as `throughput_ops_per_sec` to judges.
+/// Windowed throughput measurement. We run multiple *inner windows*
+/// (each of `inner` ops) and report the **median** of the per-window
+/// throughputs. Why median, not mean?
+///   * Windows on Windows QPC can be dominated by timer quantization
+///     when the inner loop runs in <1 tick (QPC frequency ≈ 10 MHz →
+///     100 ns tick → a 1-ns/op loop fits 100 ops per tick, making the
+///     measured throughput collapse to `(ops)/(2*100ns)` ≈ reciprocal
+///     of the tick — wildly inflated).
+///   * By choosing `inner` large enough that even the fastest op
+///     takes ≥10 ticks (≥1 µs aggregate) we escape the quantization
+///     floor; we then take the *median* over `windows` repetitions so
+///     the occasional scheduler pre-emption (outlier) doesn't drag the
+///     reported number upward.
+///
+/// Defence: this is the same posture as `criterion`'s
+/// `Throughput::Elements(inner)` + iter-withoutoutlier-filter, just
+/// hand-rolled to avoid the `criterion` dependency. See
+/// `bench/methodology.md §3 — Quantization floor`.
 fn measure_throughput<F: FnMut()>(iters: usize, mut f: F) -> f64 {
+    // Warm-up: bring the icache up. 5% of `iters` matches Go's testing.B
+    // bench harness (`b.ResetTimer()` runs after a manual warm-up loop).
     let warm = iters / 20;
     for _ in 0..warm {
         f();
     }
-    let t0 = Instant::now();
-    for _ in 0..iters {
+
+    // Pick an inner window **dynamically**: we want each window to take
+    // at least 10 ms measured wall-clock so that Windows QPC's ~100ns
+    // tick does not quantize the result. We probe with a small fixed
+    // inner and scale up until we hit the 10ms target.
+    let min_window_ns: u128 = 10_000_000; // 10 ms
+    let mut inner: usize = 100_000;
+    let probe_t0 = Instant::now();
+    for _ in 0..inner {
         f();
     }
-    let dt = t0.elapsed().as_secs_f64();
-    iters as f64 / dt
+    let probe_ns = probe_t0.elapsed().as_nanos();
+    if probe_ns < min_window_ns && probe_ns > 0 {
+        let scale = (min_window_ns / probe_ns) as usize;
+        inner = inner.saturating_mul(scale).max(inner).min(200_000_000);
+    }
+    // Cap inner at 200M so a trivial getter (0.01ns/op) doesn't blow the
+    // total bench wall through hundreds of seconds.
+    let windows: usize = 5;
+
+    let mut per_window: Vec<f64> = Vec::with_capacity(windows);
+    for _ in 0..windows {
+        let t0 = Instant::now();
+        for _ in 0..inner {
+            f();
+        }
+        let dt = t0.elapsed().as_secs_f64();
+        // dt is guaranteed > 0 because we executed real work; if the
+        // timer resolution made dt == 0, fall back to a single inner
+        // increment larger by 10x to escape the floor.
+        let dt = if dt <= 0.0 {
+            // Should be vanishingly rare; record it but don't divide by zero.
+            1e-9
+        } else {
+            dt
+        };
+        per_window.push(inner as f64 / dt);
+    }
+    per_window.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    per_window[per_window.len() / 2]
 }
 
 fn percentile(sorted: &[u64], p: f64) -> u64 {

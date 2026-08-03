@@ -31,6 +31,14 @@ Each bench reports:
   `n` ops end-to-end between two `Instant::now()` checkpoints (no per-op
   timer). This is the honest throughput score. The warm-up discards 5% of
   the iterations before the timed window starts.
+  **Window sizing**: the harness dynamically sizes the inner loop so each
+  window runs for **at least 10 ms** wall-clock (probed once and scaled),
+  then runs 5 windows and reports the **median** per-window throughput.
+  This defeats the Windows QPC ~100ns-tick quantization floor that would
+  otherwise collapse a trivial op's "throughput" to the reciprocal of one
+  timer tick (≈ 137B ops/s — visibly nonsensical). Median-of-5 suppresses
+  one-off scheduler pre-emption spikes that would otherwise inflate the
+  throughput estimate.
 - **`startup_ns`** — Time from process start to the first `oklog_ulid::make()`
   call returning. Includes dynamic linker / TLS init / OnceLock seeding, but
   not OS image-load time. Single sample rather than percentile.
