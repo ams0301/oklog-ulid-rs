@@ -20,13 +20,14 @@ bench_artifact = "target/release/ulid_bench.exe"
 fuzz_artifact = "target/release/diff_fuzz.exe"
 
 [test_parity]
-lib_tests = 30
+lib_tests = 31
+bin_tests = 6
 integration_tests = 8
-total = 38
-fuzz_seconds = 60
-fuzz_iterations = 540310000
+total = 45
+fuzz_seconds = 65
+fuzz_iterations = 554200000
 fuzz_divergences = 0
 
 [decisions_log]
-divergences_count = 11
+divergences_count = 16
 file = "DECISIONS.md"
