@@ -95,6 +95,34 @@ impl Ulid {
         core::str::from_utf8(dst).expect("ulid text is ascii")
     }
 
+    /// Owned-array text encoder. Mirrors Go `func (id ULID) MarshalText()
+    /// ([]byte, error)`. Unlike [`Ulid::marshal_text_to`] this returns an
+    /// owned `[u8; 26]` rather than writing into a caller buffer; encoding
+    /// cannot fail (the input is a valid ULID) so there's no Result.
+    ///
+    /// Prefer [`Ulid::write_text`] when the caller already has a stack
+    /// buffer to avoid the array copy; prefer this method when translating
+    /// Go `MarshalText()` line-for-line.
+    #[inline]
+    pub fn marshal_text(&self) -> [u8; ENCODED_SIZE] {
+        let mut buf = [0u8; ENCODED_SIZE];
+        let _ = self.marshal_text_to(&mut buf);
+        buf
+    }
+
+    /// Owned-array binary encoder. Mirrors Go `func (id ULID) MarshalBinary()
+    /// ([]byte, error)`. Encoding cannot fail (the input is always a valid
+    /// ULID), so there's no Result. The returned array is the canonical
+    /// big-endian 16-byte layout.
+    ///
+    /// Prefer [`Ulid::marshal_binary_to`] when reusing a stack buffer;
+    /// prefer this method for line-for-line Go translation of
+    /// `id.MarshalBinary()`.
+    #[inline]
+    pub fn marshal_binary(&self) -> [u8; RAW_SIZE] {
+        self.0
+    }
+
     /// Parse a 26-character ULID text form.
     ///
     /// Mirrors Go `func Parse(ulid string) (ULID, error)` (lines 156-158).
