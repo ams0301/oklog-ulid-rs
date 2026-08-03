@@ -263,7 +263,6 @@ fn rss_unix() -> Option<u64> {
         for line in s.lines() {
             if let Some(rest) = line.strip_prefix("VmRSS:") {
                 let kb: u64 = rest
-                    .trim()
                     .split_whitespace()
                     .next()
                     .and_then(|n| n.parse().ok())
